@@ -110,6 +110,7 @@ def get_huggingface_optimizer_and_scheduler(args, model: nn.Module,
     return optimizer, scheduler
 
 class Metric():
+    
     def __init__(self, args, predictions, goldens, review_lengths, reply_lengths, pred_bio_review, pred_bio_reply, golden_bio_review, golden_bio_reply):
         self.args = args
         self.predictions = predictions
@@ -126,7 +127,7 @@ class Metric():
             self.pred_bio_review = [pred_seq[::-1] for pred_seq in pred_bio_review]
             self.pred_bio_reply = [pred_seq[::-1] for pred_seq in pred_bio_reply]
 
-    def get_review_spans(self, biotags, review_lengths): # review
+    def get_review_spans(self, biotags, review_lengths):
         spans = []
         start = -1
         for i in range(review_lengths):
@@ -146,7 +147,7 @@ class Metric():
                     start = -1
         return spans
 
-    def get_reply_spans(self, biotags, reply_lengths): # rebuttal
+    def get_reply_spans(self, biotags, reply_lengths):
         spans = []
         start = -1
         for i in range(reply_lengths):
@@ -170,14 +171,12 @@ class Metric():
         pairs = []
         for al, ar in review_spans:
             for pl, pr in reply_spans:
-                tag_num = [0] * self.args.class_num
+                tag_num = [0] * 2
                 for i in range(al, ar + 1):
                     for j in range(pl, pr + 1):
                         tag_num[int(tags[i][j])] += 1
-                        # tag_num[int(tags[j][i])] += 1
-                if tag_num[self.args.class_num-1] < 1*(ar-al+1)*(pr-pl+1)*self.args.pair_threshold: continue
-                sentiment = -1
-                pairs.append([al, ar, pl, pr, sentiment])
+                if tag_num[1] < (ar-al+1) * (pr-pl+1) * self.args.pair_threshold: continue
+                pairs.append([al, ar, pl, pr])
         return pairs
 
     def score_review(self):
@@ -194,10 +193,7 @@ class Metric():
                 predicted_set.add(str(i) + '-' + '-'.join(map(str, spans)))
 
         correct_num = len(golden_set & predicted_set)
-        # precision = correct_num / len(predicted_set) if len(predicted_set) > 0 else 0
-        # recall = correct_num / len(golden_set) if len(golden_set) > 0 else 0
-        # f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-        # return precision, recall, f1
+
         return correct_num, len(predicted_set), len(golden_set)
 
     def score_reply(self):
@@ -214,10 +210,7 @@ class Metric():
                 predicted_set.add(str(i) + '-' + '-'.join(map(str, spans)))
 
         correct_num = len(golden_set & predicted_set)
-        # precision = correct_num / len(predicted_set) if len(predicted_set) > 0 else 0
-        # recall = correct_num / len(golden_set) if len(golden_set) > 0 else 0
-        # f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-        # return precision, recall, f1
+
         return correct_num, len(predicted_set), len(golden_set)
 
     def score_bio(self, review, reply):
@@ -291,7 +284,7 @@ class Writer():
         self.golden_bio_reply = golden_bio_reply
         self.pred_bio_review = [pred_seq[::-1] for pred_seq in pred_bio_review]
         self.pred_bio_reply = [pred_seq[::-1] for pred_seq in pred_bio_reply]
-        self.output_dir = os.path.join(args.output_dir, args.model_dir.strip('/'), args.model_dir.strip('/') + '.txt')
+        self.output_dir = os.path.join(args.output_dir, args.model_name, args.model_name + '.txt')
     
     def get_spans(self, biotags, lengths):
         spans = []
@@ -317,11 +310,11 @@ class Writer():
         pairs = []
         for al, ar in review_spans:
             for pl, pr in reply_spans:
-                tag_num = [0] * self.args.class_num
+                tag_num = [0] * 2
                 for i in range(al, ar + 1):
                     for j in range(pl, pr + 1):
                         tag_num[int(tags[i][j])] += 1
-                if tag_num[self.args.class_num-1] < 1*(ar-al+1)*(pr-pl+1)*self.args.pair_threshold: continue
+                if tag_num[1] < (ar-al+1) * (pr-pl+1) * self.args.pair_threshold: continue
                 pairs.append([al, ar, pl, pr])
         return pairs
     

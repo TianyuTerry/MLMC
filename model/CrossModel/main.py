@@ -10,10 +10,7 @@ import numpy as np
 from tqdm import trange
 
 from data import load_data_instances, DataIterator, idx2labels
-from baseline_cross_model import BaselineCrossModel
-from attnloss_cross_model import AttnLossCrossModel
-from attnloss_nocross_model import AttnLossNoCrossModel
-from attnloss_direct_cross_model import AttnLossDirectCrossModel
+from cross_model import CrossModel
 from utils import get_huggingface_optimizer_and_scheduler, context_models, Metric, Writer, plot_attention_weights, plot_attn_loss
 import math
 from termcolor import colored
@@ -49,18 +46,11 @@ def train(args):
         os.makedirs(args.model_dir)
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
-    if not os.path.exists(os.path.join(args.output_dir, args.model_dir.strip('/'))):
-        os.makedirs(os.path.join(args.output_dir, args.model_dir.strip('/')))
+    if not os.path.exists(os.path.join(args.output_dir, args.model_name)):
+        os.makedirs(os.path.join(args.output_dir, args.model_name))
     bertModel = context_models[args.bert_model_path]['model'].from_pretrained(args.bert_model_path, return_dict=False)
 
-    if args.model == 'BaselineCrossModel':
-        model = BaselineCrossModel(args, bertModel).to(args.device)
-    elif args.model == 'AttnLossCrossModel':
-        model = AttnLossCrossModel(args, bertModel).to(args.device)
-    elif args.model == 'AttnLossDirectCrossModel':
-        model = AttnLossDirectCrossModel(args, bertModel).to(args.device)
-    elif args.model == 'AttnLossNoCrossModel':
-        model = AttnLossNoCrossModel(args, bertModel).to(args.device)
+    model = CrossModel(args, bertModel).to(args.device)
     
     if args.optimizer == 'adam':
         optimizer = Adam(model.parameters(), lr=args.lr)
@@ -78,6 +68,7 @@ def train(args):
     attn_losses_test = []
     
     for epoch in range(1, args.epochs+1):
+        
         model.zero_grad()
         model.train()
         print('Epoch:{}'.format(epoch))
@@ -85,7 +76,6 @@ def train(args):
         pair_losses = []
         crf_losses = []
         attn_losses = []
-
         
         for j in trange(trainset.batch_count):
             
@@ -118,7 +108,7 @@ def train(args):
             attn_template += 1
             attn_template[attn_template==2] = -1
             attn_loss = torch.sum(attn*attn_template)
-            if args.model in ['AttnLossCrossModel', 'AttnLossDirectCrossModel', 'AttnLossNoCrossModel']:
+            if args.attention_loss:
                 loss = args.pair_weight*pair_loss + crf_loss + args.attn_weight*attn_loss/sum([args.ema**i for i in range(args.iteration)])
             else:
                 loss = args.pair_weight*pair_loss + crf_loss
@@ -150,14 +140,14 @@ def train(args):
         attn_losses_test.append(test_attn_loss)
 
         if joint_f1 > best_joint_f1:
-            model_path = args.model_dir + args.model + args.task + '.pt'
+            model_path = args.model_dir + args.model_name + '.pt'
             torch.save(model, model_path)
             best_joint_precision = joint_precision
             best_joint_recall = joint_recall
             best_joint_f1 = joint_f1
             best_joint_epoch = epoch
     
-    plot_attn_loss(args.epochs, args.model, attn_losses_all, attn_losses_dev, attn_losses_test, os.path.join(args.output_dir, args.model_dir.strip('/'), 'losses.png'))
+    plot_attn_loss(args.epochs, args.model_name, attn_losses_all, attn_losses_dev, attn_losses_test, os.path.join(args.output_dir, args.model_name, f'{args.model_name}_losses.png'))
 
     print(colored('Final evluation on dev set: ', color='red'))
     print('best epoch: {}\tbest dev precision: {:.5f}\tbest dev recall: {:.5f}\tbest dev f1: {:.5f}\n\n'.format(best_joint_epoch, best_joint_precision, best_joint_recall, best_joint_f1))
@@ -209,10 +199,6 @@ def eval(model, dataset, args, output_results=False):
         reply_results = metric.score_reply()
         bio_results = metric.score_bio(review_results, reply_results)
         pair_results = metric.score_pair()
-        # print('Aspect term\tP:{:.5f}\tR:{:.5f}\tF1:{:.5f}'.format(aspect_results[0], aspect_results[1],
-        #                                                           aspect_results[2]))
-        # print('Opinion term\tP:{:.5f}\tR:{:.5f}\tF1:{:.5f}'.format(opinion_results[0], opinion_results[1],
-        #                                                            opinion_results[2]))
         print('Argument\tP:{:.5f}\tR:{:.5f}\tF1:{:.5f}'.format(bio_results[0], bio_results[1],
                                                                    bio_results[2]))
         print('Pairing\tP:{:.5f}\tR:{:.5f}\tF1:{:.5f}'.format(pair_results[0], pair_results[1],
@@ -232,7 +218,7 @@ def visualize_attn(model, dataset, args):
     with torch.no_grad():
         if not args.plot_numbers:
             return
-        if len(args.plot_numbers) == 1 and args.plot_numbers[0] < 0:
+        elif len(args.plot_numbers) == 1 and args.plot_numbers[0] < 0:
             if -args.plot_numbers[0] > len(dataset):
                 print(colored('no attention weights visualized because the number you specified is larger than the size of test dataset', color='red'))
                 return
@@ -257,8 +243,8 @@ def visualize_attn(model, dataset, args):
                     attn_templates[idx][i][:reply_length][attn_templates[idx][i][:reply_length] == -1] = 0
             for attn, attn_template, review, reply, review_length, reply_length in zip(attns, attn_templates, review_biotags, reply_biotags, review_lengths, reply_lengths):
                 if id in ids:
-                    plot_attention_weights(attn[:review_length, :reply_length].cpu(), [idx2labels[idx] for idx in review[:review_length].cpu().tolist()], [idx2labels[idx] for idx in reply[:reply_length].cpu().tolist()], os.path.join(args.output_dir, args.model_dir.strip('/'), args.model_dir.strip('/') + str(id) + '.' + args.img_format))
-                    plot_attention_weights(attn_template[:review_length, :reply_length].cpu(), [idx2labels[idx] for idx in review[:review_length].cpu().tolist()], [idx2labels[idx] for idx in reply[:reply_length].cpu().tolist()], os.path.join(args.output_dir, args.model_dir.strip('/'), args.model_dir.strip('/') + str(id) + 'gold' + '.' + args.img_format))
+                    plot_attention_weights(attn[:review_length, :reply_length].cpu(), [idx2labels[idx] for idx in review[:review_length].cpu().tolist()], [idx2labels[idx] for idx in reply[:reply_length].cpu().tolist()], os.path.join(args.output_dir, args.model_name, args.model_name + '_' + str(id) + '.' + args.img_format))
+                    plot_attention_weights(attn_template[:review_length, :reply_length].cpu(), [idx2labels[idx] for idx in review[:review_length].cpu().tolist()], [idx2labels[idx] for idx in reply[:reply_length].cpu().tolist()], os.path.join(args.output_dir, args.model_name, args.model_name + '_' + str(id) + 'gold' + '.' + args.img_format))
                 if id == max_id:
                     return
                 id += 1
@@ -269,11 +255,11 @@ def test(args):
     
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
-    if not os.path.exists(os.path.join(args.output_dir, args.model_dir.strip('/'))):
-        os.makedirs(os.path.join(args.output_dir, args.model_dir.strip('/')))
+    if not os.path.exists(os.path.join(args.output_dir, args.model_name)):
+        os.makedirs(os.path.join(args.output_dir, args.model_name))
 
     print(colored('Final evluation on test set: ', color='red'))
-    model_path = args.model_dir + args.model + args.task + '.pt'
+    model_path = args.model_dir + args.model_name + '.pt'
     if args.device == 'cpu':
         model = torch.load(model_path, map_location=torch.device('cpu'))
     else:
@@ -299,41 +285,28 @@ def test(args):
         num_param += prod
     print(colored('There are in total {} parameters within the model'.format(num_param), color='yellow'))
 
-    # sentence_packs = json.load(open(args.prefix + args.dataset + '/dev.json'))
-    # instances = load_data_instances(sentence_packs, args)
-    # devset = DataIterator(instances, args)
-    # eval(model, devset, args)
-
-    # if args.cnn_classifier:
-    #     print(torch.sum(torch.abs(model.state_dict()['hidden2tag.0.weight']), dim=(0, 1)))
-    #     print(torch.sum(torch.abs(model.state_dict()['hidden2tag.2.weight']), dim=(0, 1)))
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--prefix', type=str, default="../../data/",
                         help='dataset and embedding path prefix')
-    parser.add_argument('--model_dir', type=str, default="savedmodel/",
+    parser.add_argument('--model_dir', type=str, default="saved_models/",
                         help='model path prefix')
+    parser.add_argument('--model_name', type=str, default="model1",
+                        help='model name')
     parser.add_argument('--output_dir', type=str, default="./outputs",
                         help='test dataset outputs directory')
-    parser.add_argument('--task', type=str, default="pair", choices=["pair", "triplet"],
-                        help='option: pair, triplet')
     parser.add_argument('--mode', type=str, default="train", choices=["train", "test"],
                         help='option: train, test')
-    parser.add_argument('--dataset', type=str, default="rr-submission-new",
+    parser.add_argument('--dataset', type=str, default="rr_submission_v3",
                         help='dataset')
     parser.add_argument('--max_sequence_len', type=int, default=210,
                         help='max length of a sentence')
-    parser.add_argument('--max_token_len', type=int, default=10000,
-                        help='max length of a paragraph')
     parser.add_argument('--max_bert_token', type=int, default=200,
                         help='max length of bert tokens for one sentence')
     parser.add_argument('--device', type=str, default="cuda",
                         help='gpu or cpu')
-    parser.add_argument('--split_size', type=int, default=10,
-                        help='split for bert model')
     parser.add_argument('--num_instances', type=int, default=-1,
                         help='number of instances to read')
     parser.add_argument('--test_code', type=bool, default=False,
@@ -349,9 +322,9 @@ if __name__ == '__main__':
     parser.add_argument('--bert_tokenizer_path', type=str,
                         default="bert-base-cased",
                         help='pretrained bert tokenizer path')
-    parser.add_argument('--token_embedding', type=bool, default=False,
+    parser.add_argument('--token_embedding', type=bool, default=True,
                         help='additional lstm embedding over pre-trained bert token embeddings')
-    parser.add_argument('--freeze_bert', type=bool, default=False,
+    parser.add_argument('--freeze_bert', type=bool, default=True,
                         help='whether to freeze parameters of pre-trained bert model')
     parser.add_argument('--num_embedding_layer', type=int, default=1,
                         help='number of layers for token LSTM')
@@ -385,6 +358,8 @@ if __name__ == '__main__':
                         help='whether to share same CRF layer for review&reply decoding')
     parser.add_argument('--cnn_classifier', type=bool, default=False,
                         help='whether to use cnn for pairing predictor')
+    parser.add_argument('--dropout', type=float, default=0.5,
+                        help='dropout rate')
     parser.add_argument('--negative_sample', type=int, default=1000,
                         help='number of negative samples, 1000 means all') 
     parser.add_argument('--plot_numbers', nargs='+', type=int, default=[],
@@ -397,26 +372,17 @@ if __name__ == '__main__':
     parser.add_argument('--iteration', type=int, default=2,
                         help='cross module iteration')
     parser.add_argument('--kernel_size', type=int, default=3,
-                        help='kernel size for both CNN module')
-    parser.add_argument('--cls_method', type=str, default='multiclass', choices=['binary', 'multiclass'],
-                        help='relates to pairing classification')
-    parser.add_argument('--model', type=str, default='BaselineCrossModel', choices=['BaselineCrossModel', 'AttnLossCrossModel', 'AttnLossDirectCrossModel', 'AttnLossNoCrossModel'],
-                        help='model choice')
+                        help='kernel size for CNN module')
+    parser.add_argument('--attention_loss', type=bool, default=True,
+                        help='whether to include attention loss')
+    parser.add_argument('--cross_update', type=bool, default=True,
+                        help='whether to cross update the sequence embedding')
 
-    parser.add_argument('--nhops', type=int, default=1,
-                        help='inference times')
-    parser.add_argument('--batch_size', type=int, default=2,
-                        help='bathc size')
-    parser.add_argument('--epochs', type=int, default=100,
+    parser.add_argument('--batch_size', type=int, default=1,
+                        help='batch size')
+    parser.add_argument('--epochs', type=int, default=50,
                         help='training epoch number')
-    parser.add_argument('--class_num', type=int, default=4,
-                        help='label number')
-    parser.add_argument('--bio_class_num', type=int, default=6,
-                        help='label number')
     args = parser.parse_args()
-
-    if args.task == 'triplet':
-        args.class_num = 6
 
     if args.mode == 'train':
         train(args)

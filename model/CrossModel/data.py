@@ -28,6 +28,7 @@ def get_spans(tags):
     return spans
 
 class Instance(object):
+    
     def __init__(self, tokenizer, sentence_pack, args, is_train):
         self.id = sentence_pack['id']
         self.sentence = sentence_pack['sentence']
@@ -54,14 +55,11 @@ class Instance(object):
                 [tokenizer.cls_token] + word_tokens + [tokenizer.sep_token])
             self.reply_bert_tokens.append(input_ids)
             self.reply_num_tokens.append(min(len(word_tokens), args.max_bert_token-1))
-        # self.bert_tokens = tokenizer.encode(self.sentence)
         self.length = len(self.sents)
         if is_train:
             self.tags = torch.full((self.review_length, self.reply_length), -1, dtype=torch.long)
         else:
             self.tags = torch.zeros(self.review_length, self.reply_length).long()
-        # self.review_bio = torch.zeros(self.review_length).long()
-        # self.reply_bio = torch.zeros(self.reply_length).long()
         
         review_bio_list = [O] * self.review_length
         reply_bio_list = [O] * self.reply_length
@@ -90,9 +88,7 @@ class Instance(object):
                 for pl, pr in opinion_span:
                     for i in range(al, ar+1):
                         for j in range(pl, pr+1):
-                            if args.task == 'pair':
-                                if args.cls_method == 'binary':
-                                    self.tags[i][j-self.review_length] = 1
+                            self.tags[i][j-self.review_length] = 1
         
         if args.encoding_scheme == 'BIO' or not is_train:
             review_bio_list = [label2idx[label] for label in review_bio_list]
@@ -201,7 +197,6 @@ class DataIterator(object):
         review_num_tokens = review_num_tokens.to(self.args.device)
         reply_num_tokens = reply_num_tokens.to(self.args.device)
 
-        # return sentence_ids, reviews, replies, review_bert_tokens, reply_bert_tokens, lengths, sens_lens, review_attn_masks, reply_attn_masks, tags, review_biotags, reply_biotags, review_masks, reply_masks, reply_lengths, review_lengths
         if self.args.token_embedding:
             return sentence_ids, reviews, replies, (review_bert_tokens, review_attn_masks, review_num_tokens), (reply_bert_tokens, reply_attn_masks, reply_num_tokens), lengths, sens_lens, tags, review_biotags, reply_biotags, review_masks, reply_masks, reply_lengths, review_lengths
         else:
