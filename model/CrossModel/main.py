@@ -299,7 +299,7 @@ if __name__ == '__main__':
                         help='test dataset outputs directory')
     parser.add_argument('--mode', type=str, default="train", choices=["train", "test"],
                         help='option: train, test')
-    parser.add_argument('--dataset', type=str, default="rr_submission_v3",
+    parser.add_argument('--dataset', type=str, default="rr_submission_v2",
                         help='dataset')
     parser.add_argument('--max_sequence_len', type=int, default=210,
                         help='max length of a sentence')
