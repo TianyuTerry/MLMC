@@ -5,10 +5,10 @@ Code for ACL 2021 Paper Argument Pair Extraction via Attention-guided Multi-Laye
 ## Packages and Environment
 
 ``` 
-python                    3.7.9 \
-torch                     1.7.1 \
-termcolor                 1.1.0 \
-transformers              4.1.1 \
+python                    3.7.9 
+torch                     1.7.1 
+termcolor                 1.1.0 
+transformers              4.1.1 
 tqdm                      4.55.1
 ```
 
@@ -21,6 +21,6 @@ Training data is uploaded in zip format because of size limit.
 ## Usage
 
 ```
-cd model/CrossModel \
+cd model/CrossModel 
 python main.py (with default parameters)
 ```
