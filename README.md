@@ -1,6 +1,6 @@
 # MLMC
 
-Code for ACL 2021 Paper [Argument Pair Extraction via Attention-guided Multi-Layer Multi-Cross Encoding](https://aclanthology.org/2021.acl-long.496.pdf)
+Code for ACL 2021 Paper [Argument Pair Extraction via Attention-guided Multi-Layer Multi-Cross Encoding](https://aclanthology.org/2021.acl-long.496.pdf).
 
 ## Packages and Environment
 
