@@ -24,3 +24,13 @@ Training data is uploaded in zip format because of size limit.
 cd model/CrossModel 
 python main.py (with default parameters)
 ```
+
+## Citation
+```
+@inproceedings{cheng2021argument,
+  title={Argument Pair Extraction via Attention-guided Multi-Layer Multi-Cross Encoding},
+  author={Cheng, Liying and Wu, Tianyu and Bing, Lidong and Si, Luo},
+  booktitle={Proceedings of ACL-IJCNLP},
+  year={2021}
+}
+```
